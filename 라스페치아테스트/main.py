@@ -16,7 +16,7 @@ client = discord.Client(intents=intents)
 
 @client.event
 async def on_ready():
-    print(f'{client.user} 연결되었습니다.')
+    print(f'{client.user}이(가) 연결되었습니다.')
 
 @client.event
 async def on_message(message):
@@ -31,42 +31,53 @@ async def on_message(message):
                 await message.channel.send(f'{attachment.filename} 이미지가 저장되었습니다.')
 
     if message.content.lower() == '팔목록':
-        image_files = [f for f in os.listdir(IMAGE_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.avif','.webp'))]
+        image_files = [f for f in os.listdir(IMAGE_DIR) if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.avif'))]
         image_files.sort(key=lambda x: os.path.getmtime(os.path.join(IMAGE_DIR, x)), reverse=True)
 
-        await send_image_list(message.channel, image_files)
+        await send_image_list(message.channel, image_files, 0)
 
-async def send_image_list(channel, image_files):
+async def send_image_list(channel, image_files, start_index):
     embed = discord.Embed(title="이미지 파일 목록")
-    view = ImageListView(image_files)
+    view = ImageListView(image_files, start_index)
 
-    for i, file in enumerate(image_files):
-        embed.add_field(name=f"이미지 {i + 1}", value=file, inline=False)
+    for i in range(start_index, min(start_index + 5, len(image_files))):
+        embed.add_field(name=f"이미지 {i + 1}", value=image_files[i], inline=False)
 
     await channel.send(embed=embed, view=view)
 
 class ImageListView(discord.ui.View):
-    def __init__(self, image_files):
+    def __init__(self, image_files, start_index):
         super().__init__()
         self.image_files = image_files
+        self.start_index = start_index
         self.add_buttons()
 
     def add_buttons(self):
-        for i in range(len(self.image_files)):
+        self.clear_items()  # 기존 버튼 제거
+
+        for i in range(self.start_index, min(self.start_index + 5, len(self.image_files))):
             button = discord.ui.Button(label=str(i + 1), style=discord.ButtonStyle.primary)
             async def callback(interaction, index=i):
-                await interaction.response.defer() # 응답 지연시간 추가. 안그러면 렉걸린다.
+                await interaction.response.defer()
                 await send_image(interaction.message.channel, self.image_files, index)
             button.callback = callback
             self.add_item(button)
 
-        if len(self.image_files) > 5:
+        if len(self.image_files) > self.start_index + 5:
             next_button = discord.ui.Button(label="다음", style=discord.ButtonStyle.primary)
             async def next_callback(interaction):
-                await interaction.response.defer() # 응답 지연 추가(쿨다운용)
-                await send_image_list(interaction.message.channel, self.image_files[5:])
+                await interaction.response.defer()
+                await send_image_list(interaction.message.channel, self.image_files, self.start_index + 5)
             next_button.callback = next_callback
             self.add_item(next_button)
+
+        if self.start_index > 0:
+            prev_button = discord.ui.Button(label="이전", style=discord.ButtonStyle.primary)
+            async def prev_callback(interaction):
+                await interaction.response.defer()
+                await send_image_list(interaction.message.channel, self.image_files, self.start_index - 5)
+            prev_button.callback = prev_callback
+            self.add_item(prev_button)
 
 async def send_image(channel, image_files, index):
     if 0 <= index < len(image_files):
